@@ -8,7 +8,7 @@ export function initialState() { return { version: 1, categories: [
   { id: 'home', name: 'Быт', color: '#ae8056' }, { id: 'self', name: 'Для себя', color: '#9275a6' }
 ], habits: [], records: {}, rewards: [], redemptions: [], theme: 'auto' }; }
 export function configFor(habit, day) { return [...habit.versions].reverse().find(v => v.from <= day); }
-export function isScheduled(habit, day) { const v = configFor(habit, day); return !!v && (!habit.archived || day < habit.archived) && v.days.includes(dateFrom(day).getDay()); }
+export function isScheduled(habit, day) { const v = configFor(habit, day); return !!v && !habit.deleted && (!habit.archived || day < habit.archived) && v.days.includes(dateFrom(day).getDay()); }
 export function recordKey(id, day) { return `${id}:${day}`; }
 export function recordFor(state, id, day) { return state.records[recordKey(id,day)]; }
 export function earned(state) { return Object.values(state.records).reduce((n,r)=> n + (r.value >= r.target ? r.points : 0),0); }
@@ -53,7 +53,7 @@ export function validateState(s) {
   const str=(x,n=80)=>{if(typeof x!=='string'||!x.trim()||x.length>n)throw Error('Некорректный текст в копии.');};
   const day=x=>{if(typeof x!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(x)||!Number.isFinite(+dateFrom(x))||dateKey(dateFrom(x))!==x)throw Error('Некорректная дата.');};
   s.categories.forEach(c=>{ident(c);str(c.name,40);if(!/^#[0-9a-f]{6}$/i.test(c.color))throw Error('Неверный цвет.');});
-  s.habits.forEach(h=>{ident(h);if(!Array.isArray(h.versions)||!h.versions.length)throw Error('Нет настроек привычки.');let prior='';h.versions.forEach(v=>{validConfig(v,s);day(v.from);if(v.from<=prior)throw Error('Неверный порядок изменений.');prior=v.from;});if(h.archived!==null)day(h.archived);});
+  s.habits.forEach(h=>{ident(h);if(h.deleted!==undefined&&typeof h.deleted!=='boolean')throw Error('Неверный статус привычки.');if(!Array.isArray(h.versions)||!h.versions.length)throw Error('Нет настроек привычки.');let prior='';h.versions.forEach(v=>{validConfig(v,s);day(v.from);if(v.from<=prior)throw Error('Неверный порядок изменений.');prior=v.from;});if(h.archived!==null)day(h.archived);});
   for(const [key,r] of Object.entries(s.records)){day(r.day);const h=s.habits.find(h=>h.id===r.habit);if(!h||key!==recordKey(r.habit,r.day)||!Number.isFinite(r.value)||r.value<0||r.value>1000000)throw Error('Неверная запись.');const v=configFor(h,r.day);if(!v||r.target!==v.target||r.points!==v.points||r.category!==v.category||r.unit!==v.unit||r.name!==v.name||!v.days.includes(dateFrom(r.day).getDay())||(v.unit==='сделано'&&![0,1].includes(r.value)))throw Error('Запись не соответствует цели.');}
   s.rewards.forEach(r=>{ident(r);str(r.name);positive(r.cost,'Цена');if(!Number.isInteger(r.cost))throw Error('Цена должна быть целой.');});
   s.redemptions.forEach(r=>{ident(r);str(r.name);day(r.day);positive(r.cost,'Цена');if(!Number.isInteger(r.cost))throw Error('Цена должна быть целой.');});
