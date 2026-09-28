@@ -11,7 +11,7 @@ export function configFor(habit, day) { return [...habit.versions].reverse().fin
 export function isScheduled(habit, day) { const v = configFor(habit, day); return !!v && !habit.deleted && (!habit.archived || day < habit.archived) && v.days.includes(dateFrom(day).getDay()); }
 export function recordKey(id, day) { return `${id}:${day}`; }
 export function recordFor(state, id, day) { return state.records[recordKey(id,day)]; }
-export function earned(state) { return Object.values(state.records).reduce((n,r)=> n + (r.value >= r.target ? r.points : 0),0); }
+export function earned(state) { return Object.values(state.records).reduce((n,r)=> n + (r.value >= r.target && !state.habits.find(h=>h.id===r.habit)?.deleted ? r.points : 0),0); }
 export function balance(state) { return earned(state) - state.redemptions.reduce((n,r)=>n+r.cost,0); }
 export function positive(n, name, max=1000000) { if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0 || n > max) throw Error(`${name}: введите число больше нуля (до ${max}).`); return n; }
 export function validConfig(v, state) {
@@ -27,9 +27,11 @@ export function saveHabit(state, input, id, today=dateKey()) {
   const v={ ...input, name:input.name.trim(), unit:input.unit.trim() }; validConfig(v,state);
   if (id) {
     const h=state.habits.find(h=>h.id===id); if (!h) throw Error('Привычка не найдена.');
-    // Changes always start tomorrow, preserving today's goal and historical awards.
-    const next=dateFrom(today); next.setDate(next.getDate()+1); v.from=dateKey(next);
+    // Replace today's and pending settings while preserving previous days.
+    v.from=today;
     h.versions=h.versions.filter(x=>x.from<v.from); h.versions.push(v);
+    const r=recordFor(state,id,today);
+    if(r) Object.assign(r,{value:r.unit===v.unit?r.value:0,target:v.target,points:v.points,category:v.category,name:v.name,unit:v.unit});
   } else state.habits.push({id:uid(),versions:[{...v,from:today}],archived:null});
 }
 export function setProgress(state,id,day,value) {
@@ -54,7 +56,7 @@ export function validateState(s) {
   const day=x=>{if(typeof x!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(x)||!Number.isFinite(+dateFrom(x))||dateKey(dateFrom(x))!==x)throw Error('Некорректная дата.');};
   s.categories.forEach(c=>{ident(c);str(c.name,40);if(!/^#[0-9a-f]{6}$/i.test(c.color))throw Error('Неверный цвет.');});
   s.habits.forEach(h=>{ident(h);if(h.deleted!==undefined&&typeof h.deleted!=='boolean')throw Error('Неверный статус привычки.');if(!Array.isArray(h.versions)||!h.versions.length)throw Error('Нет настроек привычки.');let prior='';h.versions.forEach(v=>{validConfig(v,s);day(v.from);if(v.from<=prior)throw Error('Неверный порядок изменений.');prior=v.from;});if(h.archived!==null)day(h.archived);});
-  for(const [key,r] of Object.entries(s.records)){day(r.day);const h=s.habits.find(h=>h.id===r.habit);if(!h||key!==recordKey(r.habit,r.day)||!Number.isFinite(r.value)||r.value<0||r.value>1000000)throw Error('Неверная запись.');const v=configFor(h,r.day);if(!v||r.target!==v.target||r.points!==v.points||r.category!==v.category||r.unit!==v.unit||r.name!==v.name||!v.days.includes(dateFrom(r.day).getDay())||(v.unit==='сделано'&&![0,1].includes(r.value)))throw Error('Запись не соответствует цели.');}
+  for(const [key,r] of Object.entries(s.records)){day(r.day);const h=s.habits.find(h=>h.id===r.habit);if(!h||key!==recordKey(r.habit,r.day)||!Number.isFinite(r.value)||r.value<0||r.value>1000000)throw Error('Неверная запись.');const v=configFor(h,r.day);if(!v||r.target!==v.target||r.points!==v.points||r.category!==v.category||r.unit!==v.unit||r.name!==v.name||(v.unit==='сделано'&&![0,1].includes(r.value)))throw Error('Запись не соответствует цели.');}
   s.rewards.forEach(r=>{ident(r);str(r.name);positive(r.cost,'Цена');if(!Number.isInteger(r.cost))throw Error('Цена должна быть целой.');});
   s.redemptions.forEach(r=>{ident(r);str(r.name);day(r.day);positive(r.cost,'Цена');if(!Number.isInteger(r.cost))throw Error('Цена должна быть целой.');});
   return s;
